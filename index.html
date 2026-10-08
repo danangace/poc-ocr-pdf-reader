@@ -81,13 +81,8 @@
     .file i { font-size: 20px; color: var(--accent); }
     .file span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
 
-    .opts { display: grid; grid-template-columns: 1fr; gap: 12px; margin: 20px 0; }
-    .opts label { display: grid; gap: 6px; font-size: 13px; color: var(--muted); }
-    select {
-      font: inherit; color: var(--ink); background: var(--surface);
-      border: 1px solid var(--line); border-radius: var(--r); padding: 9px 10px;
-    }
-    select:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+    .run { margin-top: 20px; }
+    button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
     button {
       font: inherit; font-weight: 500; cursor: pointer; white-space: nowrap;
@@ -203,17 +198,7 @@
         </label>
         <div class="file" id="fileInfo"><i class="ph ph-file-pdf" aria-hidden="true"></i><span id="fileName"></span></div>
 
-        <div class="opts">
-          <label>Quality
-            <select id="scale">
-              <option value="1.5">Fast</option>
-              <option value="2" selected>Balanced</option>
-              <option value="3">Accurate</option>
-            </select>
-          </label>
-        </div>
-
-        <button class="primary" id="run" disabled><i class="ph ph-text-aa" aria-hidden="true"></i>Run OCR</button>
+        <button class="primary run" id="run" disabled><i class="ph ph-text-aa" aria-hidden="true"></i>Run OCR</button>
 
         <div class="progress" id="progress" role="status" aria-live="polite">
           <div class="track"><div class="bar" id="bar"></div></div>
@@ -293,11 +278,16 @@
 
       // Printed as "(Referensi: 260000004)", so drop the stray closing bracket.
       // OCR often garbles the label ("Reterensi", "Referens1"), so match R...nsi followed by a colon.
-      const reference = valueAfter(flat, /R[a-z]{2,6}n[s5][il1]\s*[:;]/i)?.replace(/[)\]}\s]+$/, '') || null;
+      // The colon is optional ("Referensi: 123" or "Referensi 123").
+      const reference = valueAfter(flat, /\bR[a-z]{2,6}n[s5][il1]\b\s*[:;]?/i)?.replace(/[)\]}\s]+$/, '') || null;
 
-      // "KOTA ADM. JAKARTA SELATAN, 05 Januari <noise> 2026", may wrap across lines.
+      // "KOTA ADM. JAKARTA SELATAN, 05 Januari <noise> 2026" (may wrap across lines),
+      // or a plain "Tanggal 05 Januari 2026" with a real month name.
       let date = null, iso = null;
-      const dm = flat.match(/,\s*(\d{1,2})\s+([A-Za-z]{3,10})([\s\S]{0,20}?)\b(20\d{2})\b/);
+      const monthNames = Object.keys(MONTHS).join('|');
+      const dm =
+        flat.match(/,\s*(\d{1,2})\s+([A-Za-z]{3,10})([\s\S]{0,20}?)\b(20\d{2})\b/) ||
+        flat.match(new RegExp(`\\b(\\d{1,2})\\s+(${monthNames})\\b([\\s\\S]{0,20}?)\\b(20\\d{2})\\b`, 'i'));
       if (dm) {
         const month = MONTHS[dm[2].toLowerCase()];
         date = `${dm[1].padStart(2, '0')} ${dm[2]} ${dm[4]}`;
@@ -451,7 +441,7 @@
         for (let i = 1; i <= pdf.numPages; i++) {
           $('status').textContent = `Page ${i} of ${pdf.numPages}: rendering`;
           const page = await pdf.getPage(i);
-          const viewport = page.getViewport({ scale: Number($('scale').value) });
+          const viewport = page.getViewport({ scale: 2 });
           const canvas = document.createElement('canvas');
           canvas.width = viewport.width;
           canvas.height = viewport.height;

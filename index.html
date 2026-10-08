@@ -1,0 +1,505 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Faktur Pajak Reader</title>
+  <meta name="color-scheme" content="light dark">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <script src="https://unpkg.com/@phosphor-icons/web@2.1.1"></script>
+  <style>
+    /* One palette, one accent (teal), one radius (12px) across the whole page. */
+    :root {
+      --bg: #f4f4f5;
+      --surface: #fcfcfd;
+      --sunken: #f0f0f2;
+      --ink: #18181b;
+      --muted: #52525b;
+      --line: #e4e4e7;
+      --accent: #0f766e;
+      --accent-ink: #ffffff;
+      --accent-soft: #e6f4f2;
+      --danger: #b42318;
+      --shadow: 0 1px 2px rgb(24 24 27 / .04), 0 8px 24px -12px rgb(15 118 110 / .12);
+      --r: 12px;
+      --sans: "Geist", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+      --mono: "Geist Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #0e0f11;
+        --surface: #16181b;
+        --sunken: #1c1f23;
+        --ink: #ececee;
+        --muted: #a1a1aa;
+        --line: #27272a;
+        --accent: #2dd4bf;
+        --accent-ink: #042f2e;
+        --accent-soft: #10302d;
+        --danger: #f97066;
+        --shadow: 0 1px 2px rgb(0 0 0 / .4), 0 12px 32px -16px rgb(0 0 0 / .6);
+      }
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; background: var(--bg); color: var(--ink);
+      font-family: var(--sans); font-size: 15px; line-height: 1.55;
+      -webkit-font-smoothing: antialiased;
+    }
+    .wrap { max-width: 1120px; margin: 0 auto; padding: 40px 16px 96px; }
+    @media (min-width: 768px) { .wrap { padding: 56px 32px 120px; } }
+
+    header { margin-bottom: 32px; max-width: 60ch; }
+    h1 { font-size: clamp(1.75rem, 3.2vw, 2.5rem); line-height: 1.1; letter-spacing: -0.03em; font-weight: 600; margin: 0 0 12px; }
+    header p { margin: 0; color: var(--muted); }
+
+    .grid { display: grid; gap: 20px; grid-template-columns: 1fr; align-items: start; }
+    @media (min-width: 900px) { .grid { grid-template-columns: 5fr 7fr; } }
+
+    .card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); box-shadow: var(--shadow); }
+    .card-pad { padding: 20px; }
+    .card h2 { font-size: 13px; font-weight: 500; color: var(--muted); margin: 0 0 16px; letter-spacing: 0; }
+
+    /* Dropzone */
+    .drop {
+      display: grid; place-items: center; text-align: center; gap: 6px;
+      padding: 36px 20px; border: 1.5px dashed var(--line); border-radius: var(--r);
+      background: var(--sunken); cursor: pointer;
+      transition: border-color .2s, background-color .2s, transform .2s;
+    }
+    .drop:hover, .drop.over { border-color: var(--accent); background: var(--accent-soft); }
+    .drop:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; }
+    .drop i { font-size: 28px; color: var(--accent); }
+    .drop strong { font-weight: 500; }
+    .drop small { color: var(--muted); }
+    .drop input { position: absolute; width: 1px; height: 1px; opacity: 0; }
+    .file { display: none; align-items: center; gap: 10px; margin-top: 12px; padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--r); }
+    .file.on { display: flex; }
+    .file i { font-size: 20px; color: var(--accent); }
+    .file span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+
+    .opts { display: grid; grid-template-columns: 1fr; gap: 12px; margin: 20px 0; }
+    .opts label { display: grid; gap: 6px; font-size: 13px; color: var(--muted); }
+    select {
+      font: inherit; color: var(--ink); background: var(--surface);
+      border: 1px solid var(--line); border-radius: var(--r); padding: 9px 10px;
+    }
+    select:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+    button {
+      font: inherit; font-weight: 500; cursor: pointer; white-space: nowrap;
+      display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+      border-radius: var(--r); padding: 10px 16px; border: 1px solid transparent;
+      transition: transform .15s, background-color .2s, opacity .2s;
+    }
+    button:active:not(:disabled) { transform: translateY(1px) scale(.99); }
+    button:disabled { opacity: .45; cursor: not-allowed; }
+    .primary { background: var(--accent); color: var(--accent-ink); width: 100%; }
+    .primary:hover:not(:disabled) { opacity: .92; }
+    .ghost { background: transparent; color: var(--ink); border-color: var(--line); }
+    .ghost:hover:not(:disabled) { background: var(--sunken); }
+
+    .progress { margin-top: 16px; display: none; }
+    .progress.on { display: block; }
+    .track { height: 4px; background: var(--sunken); border-radius: 4px; overflow: hidden; }
+    .bar { height: 100%; width: 0; background: var(--accent); transition: width .25s; }
+    .progress p { margin: 8px 0 0; font-size: 13px; color: var(--muted); }
+
+    .error {
+      display: none; gap: 10px; margin-top: 16px; padding: 12px; border-radius: var(--r);
+      border: 1px solid var(--danger); color: var(--danger); font-size: 14px;
+    }
+    .error.on { display: flex; }
+
+    /* Fields */
+    .fields-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 4px; }
+    .fields-head h2 { margin: 0; }
+    .fields-head button { padding: 6px 12px; font-size: 13px; }
+    .row { display: grid; grid-template-columns: 1fr auto; gap: 4px 12px; padding: 16px 0; border-top: 1px solid var(--line); }
+    .row:first-of-type { border-top: 0; }
+    .row .label { grid-column: 1 / -1; font-size: 13px; color: var(--muted); }
+    .row .val { font-family: var(--mono); font-size: clamp(1.05rem, 2vw, 1.3rem); letter-spacing: -0.01em; word-break: break-all; }
+    .row .sub { grid-column: 1; font-size: 13px; color: var(--muted); font-family: var(--mono); }
+    .row .copy { grid-row: 2; grid-column: 2; padding: 6px 10px; font-size: 13px; }
+    .miss { color: var(--danger); font-family: var(--sans); font-size: 15px; }
+    .skeleton {
+      height: 1.6rem; width: 70%; border-radius: 6px;
+      background: linear-gradient(90deg, var(--sunken) 25%, var(--line) 50%, var(--sunken) 75%);
+      background-size: 200% 100%;
+    }
+    .empty { padding: 40px 8px; text-align: center; color: var(--muted); }
+    .empty i { font-size: 28px; display: block; margin-bottom: 8px; }
+    .empty p { margin: 0 auto; max-width: 32ch; }
+
+    /* Pages */
+    .pages { margin-top: 32px; display: grid; gap: 12px; }
+    .pages h2 { font-size: 13px; font-weight: 500; color: var(--muted); margin: 0 0 4px; }
+    details.page { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); }
+    details.page summary { cursor: pointer; padding: 14px 20px; display: flex; justify-content: space-between; gap: 12px; list-style: none; font-weight: 500; }
+    details.page summary::-webkit-details-marker { display: none; }
+    details.page summary::after {
+      content: ""; width: 7px; height: 7px; margin: 8px 2px 0 4px; flex: none;
+      border-right: 1.5px solid var(--muted); border-bottom: 1.5px solid var(--muted);
+      transform: rotate(45deg); transition: transform .2s;
+    }
+    details.page[open] summary::after { transform: rotate(225deg); margin-top: 12px; }
+    details.page summary small { color: var(--muted); font-weight: 400; margin-left: auto; font-family: var(--mono); }
+    .page-body { display: grid; gap: 16px; padding: 0 20px 20px; grid-template-columns: 1fr; }
+    @media (min-width: 768px) { .page-body { grid-template-columns: 220px 1fr; } }
+    .page-body canvas { width: 100%; height: auto; border: 1px solid var(--line); border-radius: 8px; }
+    .page-body pre {
+      margin: 0; padding: 14px; white-space: pre-wrap; max-height: 360px; overflow: auto;
+      font-family: var(--mono); font-size: 13px; line-height: 1.6;
+      background: var(--sunken); border-radius: var(--r);
+    }
+
+    /* Zoom viewer */
+    .page-body canvas { cursor: zoom-in; }
+    .page-body canvas:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+    .thumb small { display: block; margin-top: 6px; font-size: 13px; color: var(--muted); }
+    dialog#viewer {
+      width: min(1100px, 96vw); height: 90dvh; padding: 0; margin: auto;
+      border: 1px solid var(--line); border-radius: var(--r);
+      background: var(--surface); color: var(--ink);
+    }
+    dialog#viewer[open] { display: flex; flex-direction: column; }
+    dialog#viewer::backdrop { background: rgb(0 0 0 / .6); }
+    .v-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 12px 10px 20px; border-bottom: 1px solid var(--line); }
+    .v-bar strong { font-weight: 500; }
+    .v-tools { display: flex; align-items: center; gap: 6px; }
+    .v-tools button { padding: 6px 10px; }
+    #vPct { min-width: 4ch; text-align: center; font-family: var(--mono); font-size: 13px; color: var(--muted); }
+    .v-stage { flex: 1; overflow: auto; background: var(--sunken); cursor: grab; }
+    .v-stage.drag { cursor: grabbing; user-select: none; }
+    .v-stage img { display: block; max-width: none; width: 100%; height: auto; }
+
+    @media (prefers-reduced-motion: no-preference) {
+      .skeleton { animation: shimmer 1.4s linear infinite; }
+      @keyframes shimmer { to { background-position: -200% 0; } }
+      .row, details.page { animation: rise .45s cubic-bezier(.16, 1, .3, 1) both; }
+      @keyframes rise { from { opacity: 0; transform: translateY(8px); } }
+    }
+    @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <h1>Faktur Pajak Reader</h1>
+      <p>Upload a scanned PDF and pull out the serial number, reference and date. Everything runs in your browser, so the file never leaves your machine.</p>
+    </header>
+
+    <div class="grid">
+      <section class="card card-pad" aria-label="Upload">
+        <h2>Document</h2>
+        <label class="drop" id="drop">
+          <i class="ph ph-upload-simple" aria-hidden="true"></i>
+          <strong>Drop a PDF here or browse</strong>
+          <small>Scanned or image-based PDFs work best</small>
+          <input type="file" id="file" accept="application/pdf">
+        </label>
+        <div class="file" id="fileInfo"><i class="ph ph-file-pdf" aria-hidden="true"></i><span id="fileName"></span></div>
+
+        <div class="opts">
+          <label>Quality
+            <select id="scale">
+              <option value="1.5">Fast</option>
+              <option value="2" selected>Balanced</option>
+              <option value="3">Accurate</option>
+            </select>
+          </label>
+        </div>
+
+        <button class="primary" id="run" disabled><i class="ph ph-text-aa" aria-hidden="true"></i>Run OCR</button>
+
+        <div class="progress" id="progress" role="status" aria-live="polite">
+          <div class="track"><div class="bar" id="bar"></div></div>
+          <p id="status"></p>
+        </div>
+        <div class="error" id="error" role="alert"><i class="ph ph-warning-circle" aria-hidden="true"></i><span id="errorText"></span></div>
+      </section>
+
+      <section class="card card-pad" aria-label="Extracted fields">
+        <div class="fields-head">
+          <h2>Extracted fields</h2>
+          <button class="ghost" id="copyJson" disabled><i class="ph ph-brackets-curly" aria-hidden="true"></i>Copy JSON</button>
+        </div>
+        <div id="fields"></div>
+      </section>
+    </div>
+
+    <section class="pages" id="pagesWrap" hidden>
+      <h2>Pages</h2>
+      <div id="pages"></div>
+    </section>
+  </div>
+
+  <dialog id="viewer" aria-label="Page viewer">
+    <div class="v-bar">
+      <strong id="vTitle"></strong>
+      <div class="v-tools">
+        <button class="ghost" id="vOut" aria-label="Zoom out"><i class="ph ph-minus" aria-hidden="true"></i></button>
+        <span id="vPct">100%</span>
+        <button class="ghost" id="vIn" aria-label="Zoom in"><i class="ph ph-plus" aria-hidden="true"></i></button>
+        <button class="ghost" id="vFit">Fit</button>
+        <button class="ghost" id="vClose" aria-label="Close"><i class="ph ph-x" aria-hidden="true"></i></button>
+      </div>
+    </div>
+    <div class="v-stage" id="vStage"><img id="vImg" alt="Page preview" draggable="false"></div>
+  </dialog>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js"></script>
+  <script>
+    pdfjsLib.GlobalWorkerOptions.workerSrc =
+      'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+    const $ = (id) => document.getElementById(id);
+    const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+    let pdfData = null;
+    let lastRows = [];
+
+    /* ---------- Extraction ---------- */
+    const MONTHS = {
+      januari: 1, februari: 2, maret: 3, april: 4, mei: 5, juni: 6, juli: 7,
+      agustus: 8, september: 9, oktober: 10, november: 11, desember: 12,
+    };
+
+    // Value after a label; falls back to the next non-empty line if the same line is empty.
+    function valueAfter(text, labelRe) {
+      const lines = text.split('\n');
+      for (let i = 0; i < lines.length; i++) {
+        const m = lines[i].match(labelRe);
+        if (!m) continue;
+        const rest = lines[i].slice(m.index + m[0].length).replace(/^\s*[:;.\-]*\s*/, '').trim();
+        if (rest) return rest;
+        const next = lines.slice(i + 1).find((l) => l.trim());
+        if (next) return next.trim();
+      }
+      return null;
+    }
+
+    function extractFields(text) {
+      const flat = text.replace(/[ \t]+/g, ' ');
+
+      // Kode dan Nomor Seri Faktur Pajak, e.g. 040.002-26.12345678
+      let serial = null;
+      const rawSerial = valueAfter(flat, /Kode\s+dan\s+Nomor\s+Seri\s+Faktur\s+Pajak/i);
+      if (rawSerial) serial = rawSerial.match(/[0-9OIl][0-9OIl.\-\s]{10,}/)?.[0].trim() ?? rawSerial;
+      if (!serial) serial = flat.match(/\d{3}[.\-]\d{3}[.\-]\d{2}[.\-]\d{8}/)?.[0] ?? null;
+
+      // Printed as "(Referensi: 260000004)", so drop the stray closing bracket.
+      // OCR often garbles the label ("Reterensi", "Referens1"), so match R...nsi followed by a colon.
+      const reference = valueAfter(flat, /R[a-z]{2,6}n[s5][il1]\s*[:;]/i)?.replace(/[)\]}\s]+$/, '') || null;
+
+      // "KOTA ADM. JAKARTA SELATAN, 05 Januari <noise> 2026", may wrap across lines.
+      let date = null, iso = null;
+      const dm = flat.match(/,\s*(\d{1,2})\s+([A-Za-z]{3,10})([\s\S]{0,20}?)\b(20\d{2})\b/);
+      if (dm) {
+        const month = MONTHS[dm[2].toLowerCase()];
+        date = `${dm[1].padStart(2, '0')} ${dm[2]} ${dm[4]}`;
+        if (month) iso = `${dm[4]}-${String(month).padStart(2, '0')}-${dm[1].padStart(2, '0')}`;
+      }
+
+      return [
+        { key: 'serial', label: 'Kode dan Nomor Seri Faktur Pajak', value: serial },
+        { key: 'reference', label: 'Referensi', value: reference },
+        { key: 'date', label: 'Tanggal', value: date, sub: iso },
+      ];
+    }
+
+    /* ---------- UI ---------- */
+    function renderFields(rows, state) {
+      if (state === 'idle') {
+        $('fields').innerHTML =
+          `<div class="empty"><i class="ph ph-scan" aria-hidden="true"></i><p>Upload a PDF and run OCR. The three fields will appear here.</p></div>`;
+        return;
+      }
+      $('fields').innerHTML = rows.map((r) => {
+        let val;
+        if (r.value) val = `<div class="val">${esc(r.value)}</div>`;
+        else if (state === 'running') val = `<div class="skeleton" aria-hidden="true"></div>`;
+        else val = `<div class="val miss">Not found. Check the raw text below.</div>`;
+        const sub = r.sub ? `<div class="sub">${esc(r.sub)}</div>` : '';
+        const copy = r.value
+          ? `<button class="ghost copy" data-key="${r.key}" aria-label="Copy ${esc(r.label)}"><i class="ph ph-copy" aria-hidden="true"></i>Copy</button>`
+          : '';
+        return `<div class="row"><div class="label">${esc(r.label)}</div>${val}${copy}${sub}</div>`;
+      }).join('');
+    }
+
+    async function copyText(text, btn, idleHtml) {
+      try {
+        await navigator.clipboard.writeText(text);
+        btn.innerHTML = '<i class="ph ph-check" aria-hidden="true"></i>Copied';
+      } catch {
+        btn.innerHTML = 'Copy failed';
+      }
+      setTimeout(() => (btn.innerHTML = idleHtml), 1200);
+    }
+
+    $('fields').addEventListener('click', (e) => {
+      const btn = e.target.closest('.copy');
+      if (!btn) return;
+      const row = lastRows.find((r) => r.key === btn.dataset.key);
+      copyText(row.value, btn, '<i class="ph ph-copy" aria-hidden="true"></i>Copy');
+    });
+
+    $('copyJson').addEventListener('click', (e) => {
+      const obj = Object.fromEntries(lastRows.map((r) => [r.key, r.value]));
+      copyText(JSON.stringify(obj, null, 2), e.currentTarget,
+        '<i class="ph ph-brackets-curly" aria-hidden="true"></i>Copy JSON');
+    });
+
+    function setFile(f) {
+      if (!f) return;
+      if (f.type !== 'application/pdf') return showError('That file is not a PDF.');
+      f.arrayBuffer().then((buf) => {
+        pdfData = new Uint8Array(buf);
+        $('fileName').textContent = f.name;
+        $('fileInfo').classList.add('on');
+        $('run').disabled = false;
+        showError('');
+      });
+    }
+    function showError(msg) {
+      $('errorText').textContent = msg;
+      $('error').classList.toggle('on', !!msg);
+    }
+
+    $('file').addEventListener('change', (e) => setFile(e.target.files[0]));
+    ['dragenter', 'dragover'].forEach((ev) =>
+      $('drop').addEventListener(ev, (e) => { e.preventDefault(); $('drop').classList.add('over'); }));
+    ['dragleave', 'drop'].forEach((ev) =>
+      $('drop').addEventListener(ev, (e) => { e.preventDefault(); $('drop').classList.remove('over'); }));
+    $('drop').addEventListener('drop', (e) => setFile(e.dataTransfer.files[0]));
+
+    /* ---------- Zoom viewer ---------- */
+    const viewer = $('viewer'), stage = $('vStage'), vImg = $('vImg');
+    let zoom = 1;
+
+    function setZoom(z) {
+      zoom = Math.min(6, Math.max(0.5, z));
+      vImg.style.width = `${zoom * 100}%`;
+      $('vPct').textContent = `${Math.round(zoom * 100)}%`;
+    }
+    function openViewer(canvas, title) {
+      $('vTitle').textContent = title;
+      canvas.toBlob((blob) => {
+        vImg.src = URL.createObjectURL(blob);
+        setZoom(1);
+        stage.scrollTo(0, 0);
+        viewer.showModal();
+      });
+    }
+    viewer.addEventListener('close', () => { URL.revokeObjectURL(vImg.src); vImg.removeAttribute('src'); });
+    $('vIn').addEventListener('click', () => setZoom(zoom * 1.25));
+    $('vOut').addEventListener('click', () => setZoom(zoom / 1.25));
+    $('vFit').addEventListener('click', () => { setZoom(1); stage.scrollTo(0, 0); });
+    $('vClose').addEventListener('click', () => viewer.close());
+    viewer.addEventListener('click', (e) => { if (e.target === viewer) viewer.close(); });
+    // Pinch on a trackpad or ctrl + wheel zooms; plain wheel scrolls.
+    stage.addEventListener('wheel', (e) => {
+      if (!e.ctrlKey) return;
+      e.preventDefault();
+      setZoom(zoom * (e.deltaY < 0 ? 1.1 : 1 / 1.1));
+    }, { passive: false });
+    // Drag to pan; a click without dragging toggles fit / 250%.
+    let drag = null;
+    stage.addEventListener('pointerdown', (e) => {
+      drag = { x: e.clientX, y: e.clientY, sl: stage.scrollLeft, st: stage.scrollTop, moved: false };
+      stage.setPointerCapture(e.pointerId);
+    });
+    stage.addEventListener('pointermove', (e) => {
+      if (!drag) return;
+      const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
+      if (Math.abs(dx) + Math.abs(dy) > 4) { drag.moved = true; stage.classList.add('drag'); }
+      stage.scrollLeft = drag.sl - dx;
+      stage.scrollTop = drag.st - dy;
+    });
+    stage.addEventListener('pointerup', () => {
+      if (drag && !drag.moved) setZoom(zoom > 1 ? 1 : 2.5);
+      drag = null;
+      stage.classList.remove('drag');
+    });
+
+    /* ---------- Pipeline ---------- */
+    $('run').addEventListener('click', async () => {
+      $('run').disabled = true;
+      $('copyJson').disabled = true;
+      $('pages').innerHTML = '';
+      $('pagesWrap').hidden = true;
+      $('progress').classList.add('on');
+      showError('');
+      lastRows = extractFields('');
+      renderFields(lastRows, 'running');
+      let allText = '';
+
+      try {
+        const pdf = await pdfjsLib.getDocument({ data: pdfData.slice() }).promise;
+        const worker = await Tesseract.createWorker('eng', 1, {
+          logger: (m) => {
+            if (m.status === 'recognizing text') {
+              $('bar').style.width = `${Math.round(m.progress * 100)}%`;
+            }
+          },
+        });
+
+        for (let i = 1; i <= pdf.numPages; i++) {
+          $('status').textContent = `Page ${i} of ${pdf.numPages}: rendering`;
+          const page = await pdf.getPage(i);
+          const viewport = page.getViewport({ scale: Number($('scale').value) });
+          const canvas = document.createElement('canvas');
+          canvas.width = viewport.width;
+          canvas.height = viewport.height;
+          await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
+
+          $('status').textContent = `Page ${i} of ${pdf.numPages}: reading text`;
+          $('bar').style.width = '0%';
+          const { data } = await worker.recognize(canvas);
+
+          const d = document.createElement('details');
+          d.className = 'page';
+          if (i === 1) d.open = true;
+          d.innerHTML = `<summary>Page ${i}<small>${data.confidence.toFixed(0)}% confidence</small></summary>
+            <div class="page-body"><div class="thumb"></div><pre></pre></div>`;
+          canvas.tabIndex = 0;
+          canvas.setAttribute('role', 'button');
+          canvas.setAttribute('aria-label', `Zoom page ${i}`);
+          const pageNo = i;
+          canvas.addEventListener('click', () => openViewer(canvas, `Page ${pageNo}`));
+          canvas.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openViewer(canvas, `Page ${pageNo}`); }
+          });
+          d.querySelector('.thumb').append(canvas, Object.assign(document.createElement('small'), { textContent: 'Click to zoom' }));
+          d.querySelector('pre').textContent = data.text;
+          $('pages').appendChild(d);
+          $('pagesWrap').hidden = false;
+
+          allText += data.text + '\n';
+          lastRows = extractFields(allText);
+          renderFields(lastRows, 'running');
+        }
+
+        await worker.terminate();
+        renderFields(lastRows, 'done');
+        $('copyJson').disabled = false;
+        $('status').textContent = `Finished ${pdf.numPages} page${pdf.numPages > 1 ? 's' : ''}`;
+        $('bar').style.width = '100%';
+      } catch (err) {
+        console.error(err);
+        showError(`Something went wrong: ${err.message}`);
+        renderFields(lastRows, lastRows.some((r) => r.value) ? 'done' : 'idle');
+        $('progress').classList.remove('on');
+      } finally {
+        $('run').disabled = false;
+      }
+    });
+
+    renderFields([], 'idle');
+  </script>
+</body>
+</html>
